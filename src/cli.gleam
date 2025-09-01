@@ -15,7 +15,7 @@ import settings
 /// Field purposes:
 /// - stage: Which compilation stage to stop at (lex/parse/codegen/assembly/executable)
 /// - platform: Target platform for code generation (Linux/OSX calling conventions)
-/// - debug: Whether to preserve intermediate files for debugging
+/// - object: Whether to stop at object file generation (.o files)
 /// - src_file: Input source file path to compile
 ///
 /// Why this design:
@@ -28,7 +28,7 @@ pub type Config {
   Config(
     stage: settings.Stage,
     platform: settings.Platform,
-    debug: Bool,
+    object: Bool,
     clean: Bool,
     src_file: String,
   )
@@ -88,17 +88,17 @@ pub fn run_app(app: glint.Glint(Nil)) -> Nil {
 /// - Parse flags into structured configuration for business logic
 ///
 /// Flag design rationale:
-/// - Boolean flags for compilation stages (--lex, --parse, --codegen, -s)
+/// - Boolean flags for compilation stages (--lex, --parse, --codegen, -s, --object)
 /// - Stage flags are mutually exclusive with priority order
-/// - Debug flag (-d) for development and troubleshooting
+/// - Object flag (--object) for separate compilation without linking
 /// - Target platform flag for cross-compilation support
-/// - Short names (-s, -d) for commonly used flags
+/// - Short names (-s) for commonly used flags
 ///
 /// Why this flag structure:
 /// - Matches standard compiler interfaces (gcc, clang)
 /// - Progressive stages allow debugging compilation pipeline
 /// - Platform targeting enables cross-compilation
-/// - Debug mode helps developers understand compilation process
+/// - Object generation supports separate compilation workflow
 /// - Follows Unix command line conventions
 fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
   use <- glint.command_help("A C compiler written in Gleam")
@@ -130,10 +130,10 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
     |> glint.flag_help("Stop before assembling (keep .s file)"),
   )
 
-  use debug_flag <- glint.flag(
-    glint.bool_flag("d")
+  use object_flag <- glint.flag(
+    glint.bool_flag("object")
     |> glint.flag_default(False)
-    |> glint.flag_help("Debug mode (keep intermediate files)"),
+    |> glint.flag_help("Generate object file (.o) without linking"),
   )
 
   use clean_flag <- glint.flag(
@@ -154,7 +154,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
   let assert Ok(parse) = parse_flag(flags)
   let assert Ok(codegen) = codegen_flag(flags)
   let assert Ok(assembly) = assembly_flag(flags)
-  let assert Ok(debug) = debug_flag(flags)
+  let assert Ok(object) = object_flag(flags)
   let assert Ok(clean) = clean_flag(flags)
   let assert Ok(target_str) = target_opt(flags)
 
@@ -173,7 +173,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
           parse,
           codegen,
           assembly,
-          debug,
+          object,
           clean,
           target_str,
           src_file,
@@ -191,7 +191,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
 /// Configuration parsing strategy:
 /// - Resolve stage priority when multiple stage flags are provided
 /// - Validate platform string against supported targets
-/// - Preserve all other settings as-is (debug, src_file)
+/// - Preserve all other settings as-is (object, src_file)
 /// - Return detailed error messages for invalid combinations
 ///
 /// Stage resolution logic:
@@ -205,7 +205,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
 /// - Allows users to add flags without changing behavior
 /// - Provides predictable behavior regardless of flag order
 /// - Follows principle of least surprise for command line tools
-/// - Enables scripts to safely add debugging flags
+/// - Enables scripts to safely add compilation stage flags
 ///
 /// Platform validation approach:
 /// - Explicit whitelist of supported platforms
@@ -217,19 +217,20 @@ pub fn parse_config(
   parse: Bool,
   codegen: Bool,
   assembly: Bool,
-  debug: Bool,
+  object: Bool,
   clean: Bool,
   target_str: String,
   src_file: String,
 ) -> Result(Config, String) {
   // Determine compilation stage with priority-based resolution
   // Earlier stages override later stages for predictable behavior
-  let stage = case lex, parse, codegen, assembly {
-    True, _, _, _ -> settings.Lex
-    False, True, _, _ -> settings.Parse
-    False, False, True, _ -> settings.Codegen
-    False, False, False, True -> settings.Assembly
-    False, False, False, False -> settings.Executable
+  let stage = case lex, parse, codegen, assembly, object {
+    True, _, _, _, _ -> settings.Lex
+    False, True, _, _, _ -> settings.Parse
+    False, False, True, _, _ -> settings.Codegen
+    False, False, False, True, _ -> settings.Assembly
+    False, False, False, False, True -> settings.Object
+    False, False, False, False, False -> settings.Executable
   }
 
   // Validate and parse target platform string
@@ -243,7 +244,7 @@ pub fn parse_config(
   Ok(Config(
     stage: stage,
     platform: platform,
-    debug: debug,
+    object: object,
     clean: clean,
     src_file: src_file,
   ))

@@ -53,12 +53,12 @@ fn handle_command(config: cli.Config) -> Nil {
 /// - Validate input file extension for early error detection
 /// - Execute core compilation stages directly on source (lex/parse/codegen/emit)
 /// - Handle assembly and linking for executable generation
-/// - Automatic cleanup of intermediate files with debug mode support
+/// - Automatic cleanup of intermediate files after compilation
 ///
 /// Resource management strategy:
 /// - Use with_cleanup for automatic file cleanup (RAII pattern)
-/// - Assembly files are cleaned up only for executable stage
-/// - Debug mode preserves all intermediate files for inspection
+/// - Assembly files are cleaned up after linking for executable stage
+/// - Object files are preserved for separate compilation workflow
 ///
 /// Error handling approach:
 /// - Fail fast on invalid file extensions
@@ -85,12 +85,15 @@ fn run_driver(config: cli.Config) -> Result(Nil, String) {
       // Compile directly with source file
       case compiler.compile(config.stage, config.src_file, config.platform) {
         Ok(_) -> {
-          // Only assemble and link for executable stage
-          // Other stages (Lex, Parse, Codegen, Assembly) stop after their respective outputs
+          // Handle post-compilation steps based on stage
           case config.stage {
+            settings.Object -> {
+              let assembly_file = utils.replace_extension(config.src_file, ".s")
+              assemble_to_object(assembly_file)
+            }
             settings.Executable -> {
               let assembly_file = utils.replace_extension(config.src_file, ".s")
-              assemble_and_link(assembly_file, config.debug)
+              assemble_and_link(assembly_file)
             }
             _ -> Ok(Nil)
           }
@@ -101,13 +104,34 @@ fn run_driver(config: cli.Config) -> Result(Nil, String) {
   }
 }
 
+/// Convert assembly code to object file (.o) without linking
+///
+/// Object file generation strategy:
+/// - Use GCC to assemble .s file into .o object file
+/// - Stop before linking step to produce relocatable object file
+/// - Preserve assembly file after object generation
+/// - Generate .o file with same base name as assembly file
+///
+/// Why generate object files:
+/// - Enables separate compilation and later linking
+/// - Standard practice in multi-file C projects
+/// - Allows inspection of object code and symbols
+/// - Matches gcc -c flag behavior
+fn assemble_to_object(assembly_file: String) -> Result(Nil, String) {
+  let object_file = utils.replace_extension(assembly_file, ".o")
+  case utils.run_command("gcc", ["-c", assembly_file, "-o", object_file]) {
+    Ok(_) -> Ok(Nil)
+    Error(_) -> Error("Object file generation failed")
+  }
+}
+
 /// Convert assembly code to executable binary through assembling and linking
 ///
 /// Assembly and linking strategy:
 /// - Use GCC as assembler and linker for platform compatibility
 /// - Generate executable with same base name as assembly file
 /// - Handle platform-specific object file formats and linking
-/// - Automatic cleanup of assembly files unless in debug mode
+/// - Clean up intermediate assembly files after linking
 ///
 /// Why use GCC for assembly/linking:
 /// - Handles platform-specific assembler syntax and object formats
@@ -121,13 +145,8 @@ fn run_driver(config: cli.Config) -> Result(Nil, String) {
 /// - Follows Unix convention (source.c -> source executable)
 /// - Enables easy execution of compiled programs
 /// - Consistent with other compilers (gcc, clang)
-///
-/// Resource management:
-/// - Automatic cleanup prevents accumulation of .s files
-/// - Debug mode preserves assembly for inspection and debugging
-/// - with_cleanup ensures consistent behavior on success/failure
-fn assemble_and_link(assembly_file: String, debug: Bool) -> Result(Nil, String) {
-  utils.with_cleanup(assembly_file, debug, fn(assembly_file) {
+fn assemble_and_link(assembly_file: String) -> Result(Nil, String) {
+  utils.with_cleanup(assembly_file, False, fn(assembly_file) {
     let output_file = utils.chop_extension(assembly_file)
     case utils.run_command("gcc", [assembly_file, "-o", output_file]) {
       Ok(_) -> Ok(Nil)

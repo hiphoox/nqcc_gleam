@@ -47,10 +47,12 @@ pub type CompileError {
 /// - Lex: source → tokens (stop)
 /// - Parse: source → tokens → AST (stop)
 /// - Codegen: source → tokens → AST → assembly (stop)
-/// - Assembly/Executable: source → tokens → AST → assembly → file output
+/// - Assembly: source → tokens → AST → assembly → .s file (stop)
+/// - Object: source → tokens → AST → assembly → .s file → .o file (stop)
+/// - Executable: source → tokens → AST → assembly → .s file → executable
 ///
 /// Why this design:
-/// - Matches standard compiler architecture (gcc -E, -S, -c flags)
+/// - Matches standard compiler architecture (gcc -E, -S, -c, -o flags)
 /// - Each stage can be tested and debugged independently
 /// - Pipeline pattern eliminates duplicate computation
 /// - Clear separation of concerns between compilation stages
@@ -85,7 +87,7 @@ pub fn compile(
       use _asm <- result.try(compile_to_asm(source))
       Ok(Nil)
     }
-    settings.Assembly | settings.Executable -> {
+    settings.Assembly | settings.Object | settings.Executable -> {
       use asm <- result.try(compile_to_asm(source))
       let asm_filename = string.drop_end(src_file, 2) <> ".s"
       result.map_error(emitter.emit(asm_filename, asm, platform), EmitError)

@@ -218,7 +218,7 @@ pub fn clean_project_files(src_file: String) -> Nil {
   let base_name = chop_extension(src_file)
 
   // List of all file extensions/types that may be generated
-  let extensions_to_clean = [".i", ".s", ".o"]
+  let extensions_to_clean = [".s", ".o"]
 
   // Clean intermediate files with extensions
   list.each(extensions_to_clean, fn(ext) {

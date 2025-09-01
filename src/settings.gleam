@@ -1,30 +1,33 @@
 /// Compilation stage enumeration representing different points to stop compilation
 ///
 /// Compilation pipeline stages:
-/// - Source code → Preprocessing → Lexical Analysis → Syntax Analysis → Code Generation → Assembly → Linking
+/// - Source code → Lexical Analysis → Syntax Analysis → Code Generation → Assembly → Object → Linking
 /// - Each stage produces intermediate output that can be inspected for debugging
 /// - Allows incremental development and testing of compiler components
-/// - Matches standard compiler interfaces (gcc -E, -S, -c flags)
+/// - Matches standard compiler interfaces (gcc -E, -S, -c, -o flags)
 ///
 /// Stage progression and purposes:
 /// - Lex: Stop after tokenization (useful for lexer development and debugging)
 /// - Parse: Stop after AST generation (useful for parser development and syntax checking)
 /// - Codegen: Stop after assembly generation (useful for code generator testing)
-/// - Assembly: Stop after assembly emission, before linking (useful for assembly inspection)
+/// - Assembly: Stop after assembly emission, before object generation (useful for assembly inspection)
+/// - Object: Stop after object file generation, before linking (useful for separate compilation)
 /// - Executable: Complete compilation to runnable binary (normal compilation mode)
 ///
 /// Why this design:
 /// - Enables debugging of each compilation phase independently
 /// - Follows standard compiler architecture (multi-pass compilation)
 /// - Allows testing intermediate representations without full compilation
-/// - Supports development workflow: fix lexer → test parser → fix codegen
+/// - Supports development workflow: fix lexer → test parser → fix codegen → test object generation
 /// - Matches professional compiler behavior (gcc, clang, MSVC all support similar flags)
 /// - Educational value: students can see output at each compilation stage
+/// - Enables separate compilation for large projects
 pub type Stage {
   Lex
   Parse
   Codegen
   Assembly
+  Object
   Executable
 }
 
