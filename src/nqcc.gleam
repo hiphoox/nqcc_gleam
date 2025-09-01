@@ -51,14 +51,12 @@ fn handle_command(config: cli.Config) -> Nil {
 ///
 /// Compilation pipeline architecture:
 /// - Validate input file extension for early error detection
-/// - Preprocess source to handle #include and macros
-/// - Execute core compilation stages (lex/parse/codegen/emit)
+/// - Execute core compilation stages directly on source (lex/parse/codegen/emit)
 /// - Handle assembly and linking for executable generation
 /// - Automatic cleanup of intermediate files with debug mode support
 ///
 /// Resource management strategy:
 /// - Use with_cleanup for automatic file cleanup (RAII pattern)
-/// - Preprocessed files are always cleaned up after compilation
 /// - Assembly files are cleaned up only for executable stage
 /// - Debug mode preserves all intermediate files for inspection
 ///
@@ -69,8 +67,8 @@ fn handle_command(config: cli.Config) -> Nil {
 /// - Provide context-specific error messages for debugging
 ///
 /// Why this pipeline design:
-/// - Matches standard C compilation workflow (cpp -> cc1 -> as -> ld)
-/// - Separates concerns: preprocessing vs compilation vs linking
+/// - Works directly with C source code without external preprocessing
+/// - Separates concerns: compilation vs linking
 /// - Enables partial compilation for debugging and development
 /// - Automatic resource management prevents file system pollution
 /// - Clear error propagation makes debugging compilation issues easier
@@ -84,58 +82,22 @@ fn run_driver(config: cli.Config) -> Result(Nil, String) {
       Ok(Nil)
     }
     False -> {
-      // Always preprocess first for all stages
-      use preprocessed_file <- result.try(preprocess(config.src_file))
-
-      // Use with_cleanup to automatically handle cleanup
-      utils.with_cleanup(preprocessed_file, config.debug, fn(preprocessed_file) {
-        // Compile to the specified stage
-        case
-          compiler.compile(config.stage, preprocessed_file, config.platform)
-        {
-          Ok(_) -> {
-            // For executable stage, continue with assembly and linking
-            case config.stage {
-              settings.Executable -> {
-                let assembly_file =
-                  utils.replace_extension(preprocessed_file, ".s")
-                assemble_and_link(assembly_file, config.debug)
-              }
-              _ -> Ok(Nil)
+      // Compile directly with source file
+      case compiler.compile(config.stage, config.src_file, config.platform) {
+        Ok(_) -> {
+          // Only assemble and link for executable stage
+          // Other stages (Lex, Parse, Codegen, Assembly) stop after their respective outputs
+          case config.stage {
+            settings.Executable -> {
+              let assembly_file = utils.replace_extension(config.src_file, ".s")
+              assemble_and_link(assembly_file, config.debug)
             }
+            _ -> Ok(Nil)
           }
-          Error(e) -> Error("Compilation failed: " <> string.inspect(e))
         }
-      })
+        Error(e) -> Error("Compilation failed: " <> string.inspect(e))
+      }
     }
-  }
-}
-
-/// Run C preprocessor to handle #include directives and macro expansion
-///
-/// Preprocessing strategy:
-/// - Use GCC preprocessor for standard C preprocessing behavior
-/// - Generate .i file (preprocessed source) as intermediate representation
-/// - Use -E flag to stop after preprocessing
-/// - Use -P flag to omit line number information (cleaner output)
-/// - Handle external dependencies (headers, macros) before our compiler stages
-///
-/// Why preprocessing is essential:
-/// - Real C code uses #include for headers and standard library
-/// - Macro expansion must happen before lexical analysis
-/// - Preprocessor handles file inclusion, conditional compilation
-/// - Our compiler can focus on core language features, not preprocessor complexity
-/// - Matches standard C compilation pipeline (cpp -> cc1 -> as -> ld)
-///
-/// File naming convention:
-/// - .i extension follows GCC convention for preprocessed C files
-/// - Enables easy identification of compilation stage artifacts
-/// - Consistent with other compilers and build systems
-fn preprocess(src_file: String) -> Result(String, String) {
-  let output_file = utils.replace_extension(src_file, ".i")
-  case utils.run_command("gcc", ["-E", "-P", src_file, "-o", output_file]) {
-    Ok(_) -> Ok(output_file)
-    Error(_) -> Error("Preprocessing failed")
   }
 }
 
