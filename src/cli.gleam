@@ -139,7 +139,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
   use clean_flag <- glint.flag(
     glint.bool_flag("clean")
     |> glint.flag_default(False)
-    |> glint.flag_help("Clean intermediate (.i, .s, .o) and executable files"),
+    |> glint.flag_help("Clean intermediate (.s, .o) and executable files"),
   )
 
   use target_opt <- glint.flag(
