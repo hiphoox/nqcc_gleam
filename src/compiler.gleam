@@ -3,6 +3,9 @@ import ast
 import codegen
 import emitter
 
+import gleam/int
+import gleam/io
+import gleam/list
 import gleam/result
 import gleam/string
 import lexer
@@ -62,7 +65,16 @@ pub fn compile(
 
   case stage {
     settings.Lex -> {
-      use _tokens <- result.try(compile_to_tokens(source))
+      use tokens <- result.try(compile_to_tokens(source))
+      io.println("Tokens:")
+      list.index_map(tokens, fn(token, index) {
+        io.println(
+          string.pad_start(int.to_string(index + 1), 3, " ")
+          <> ": "
+          <> format_token(token),
+        )
+      })
+      |> list.each(fn(_) { Nil })
       Ok(Nil)
     }
     settings.Parse -> {
@@ -135,6 +147,28 @@ fn compile_to_ast(source: String) -> Result(ast.Program, CompileError) {
 fn compile_to_asm(source: String) -> Result(assembly.Assembly, CompileError) {
   use ast <- result.try(compile_to_ast(source))
   Ok(codegen.generate(ast))
+}
+
+/// Format a token for user-friendly display
+///
+/// Token formatting strategy:
+/// - Show token type clearly with descriptive names
+/// - Include associated data for tokens that carry information
+/// - Use consistent formatting for readability
+/// - Make output suitable for debugging and educational purposes
+fn format_token(token: tokens.Token) -> String {
+  case token {
+    tokens.Identifier(name) -> "IDENTIFIER(\"" <> name <> "\")"
+    tokens.Constant(value) -> "CONSTANT(" <> int.to_string(value) <> ")"
+    tokens.KWInt -> "KEYWORD_INT"
+    tokens.KWReturn -> "KEYWORD_RETURN"
+    tokens.KWVoid -> "KEYWORD_VOID"
+    tokens.OpenParen -> "OPEN_PAREN"
+    tokens.CloseParen -> "CLOSE_PAREN"
+    tokens.OpenBrace -> "OPEN_BRACE"
+    tokens.CloseBrace -> "CLOSE_BRACE"
+    tokens.Semicolon -> "SEMICOLON"
+  }
 }
 
 /// Read source file content with proper error handling
