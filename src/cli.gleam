@@ -29,6 +29,7 @@ pub type Config {
     stage: settings.Stage,
     platform: settings.Platform,
     debug: Bool,
+    clean: Bool,
     src_file: String,
   )
 }
@@ -135,6 +136,12 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
     |> glint.flag_help("Debug mode (keep intermediate files)"),
   )
 
+  use clean_flag <- glint.flag(
+    glint.bool_flag("clean")
+    |> glint.flag_default(False)
+    |> glint.flag_help("Clean intermediate (.i, .s, .o) and executable files"),
+  )
+
   use target_opt <- glint.flag(
     glint.string_flag("target")
     |> glint.flag_default("osx")
@@ -148,6 +155,7 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
   let assert Ok(codegen) = codegen_flag(flags)
   let assert Ok(assembly) = assembly_flag(flags)
   let assert Ok(debug) = debug_flag(flags)
+  let assert Ok(clean) = clean_flag(flags)
   let assert Ok(target_str) = target_opt(flags)
 
   case args {
@@ -160,7 +168,16 @@ fn nqcc_command(command_handler: fn(Config) -> Nil) -> glint.Command(Nil) {
       // Parse and validate all flags into structured configuration
       // Delegate to command_handler for actual compilation logic
       case
-        parse_config(lex, parse, codegen, assembly, debug, target_str, src_file)
+        parse_config(
+          lex,
+          parse,
+          codegen,
+          assembly,
+          debug,
+          clean,
+          target_str,
+          src_file,
+        )
       {
         Ok(config) -> command_handler(config)
         Error(e) -> io.println("Error: " <> e)
@@ -201,6 +218,7 @@ pub fn parse_config(
   codegen: Bool,
   assembly: Bool,
   debug: Bool,
+  clean: Bool,
   target_str: String,
   src_file: String,
 ) -> Result(Config, String) {
@@ -222,5 +240,11 @@ pub fn parse_config(
     _ -> Error("Invalid platform: " <> target_str <> ". Use 'linux' or 'osx'")
   })
 
-  Ok(Config(stage: stage, platform: platform, debug: debug, src_file: src_file))
+  Ok(Config(
+    stage: stage,
+    platform: platform,
+    debug: debug,
+    clean: clean,
+    src_file: src_file,
+  ))
 }

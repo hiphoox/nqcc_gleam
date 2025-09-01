@@ -77,26 +77,38 @@ fn handle_command(config: cli.Config) -> Nil {
 fn run_driver(config: cli.Config) -> Result(Nil, String) {
   use _ <- result.try(utils.validate_extension(config.src_file))
 
-  // Always preprocess first for all stages
-  use preprocessed_file <- result.try(preprocess(config.src_file))
-
-  // Use with_cleanup to automatically handle cleanup
-  utils.with_cleanup(preprocessed_file, config.debug, fn(preprocessed_file) {
-    // Compile to the specified stage
-    case compiler.compile(config.stage, preprocessed_file, config.platform) {
-      Ok(_) -> {
-        // For executable stage, continue with assembly and linking
-        case config.stage {
-          settings.Executable -> {
-            let assembly_file = utils.replace_extension(preprocessed_file, ".s")
-            assemble_and_link(assembly_file, config.debug)
-          }
-          _ -> Ok(Nil)
-        }
-      }
-      Error(e) -> Error("Compilation failed: " <> string.inspect(e))
+  // Handle clean flag - remove intermediate and executable files
+  case config.clean {
+    True -> {
+      utils.clean_project_files(config.src_file)
+      Ok(Nil)
     }
-  })
+    False -> {
+      // Always preprocess first for all stages
+      use preprocessed_file <- result.try(preprocess(config.src_file))
+
+      // Use with_cleanup to automatically handle cleanup
+      utils.with_cleanup(preprocessed_file, config.debug, fn(preprocessed_file) {
+        // Compile to the specified stage
+        case
+          compiler.compile(config.stage, preprocessed_file, config.platform)
+        {
+          Ok(_) -> {
+            // For executable stage, continue with assembly and linking
+            case config.stage {
+              settings.Executable -> {
+                let assembly_file =
+                  utils.replace_extension(preprocessed_file, ".s")
+                assemble_and_link(assembly_file, config.debug)
+              }
+              _ -> Ok(Nil)
+            }
+          }
+          Error(e) -> Error("Compilation failed: " <> string.inspect(e))
+        }
+      })
+    }
+  }
 }
 
 /// Run C preprocessor to handle #include directives and macro expansion

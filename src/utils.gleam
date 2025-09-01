@@ -1,3 +1,4 @@
+import gleam/io
 import gleam/list
 import gleam/string
 import gleamyshell
@@ -117,6 +118,7 @@ pub fn chop_extension(filename: String) -> String {
 /// - Enables easy chaining with other Result-returning functions
 /// - Used for preprocessing (gcc -E), assembly (gcc), and linking
 pub fn run_command(cmd: String, args: List(String)) -> Result(Nil, String) {
+  io.print("Running command: " <> cmd <> " " <> string.join(args, " ") <> "\n")
   case gleamyshell.execute(cmd, in: ".", args: args) {
     Ok(gleamyshell.CommandOutput(0, _)) -> Ok(Nil)
     Ok(gleamyshell.CommandOutput(exit_code, output)) ->
@@ -189,4 +191,43 @@ pub fn with_cleanup(
   let result = callback(file_path)
   cleanup_file(file_path, debug)
   result
+}
+
+/// Clean all intermediate and executable files generated from a source file
+///
+/// Comprehensive cleanup strategy:
+/// - Remove preprocessed files (.i extension)
+/// - Remove assembly files (.s extension)
+/// - Remove object files (.o extension)
+/// - Remove executable files (no extension, same base name)
+/// - Always clean regardless of debug mode when explicitly requested
+///
+/// File discovery logic:
+/// - Start with source file base name (remove .c or .h extension)
+/// - Generate all possible intermediate file names
+/// - Attempt to delete each file type that may have been generated
+/// - Silent failure for non-existent files (common and expected)
+///
+/// Why this design:
+/// - Matches standard make clean behavior for build systems
+/// - Comprehensive cleanup prevents accumulation of build artifacts
+/// - Safe deletion (ignores non-existent files without errors)
+/// - Works with any source file name following compiler conventions
+/// - Essential for CI/CD and automated build environments
+pub fn clean_project_files(src_file: String) -> Nil {
+  let base_name = chop_extension(src_file)
+
+  // List of all file extensions/types that may be generated
+  let extensions_to_clean = [".i", ".s", ".o"]
+
+  // Clean intermediate files with extensions
+  list.each(extensions_to_clean, fn(ext) {
+    let file_to_clean = base_name <> ext
+    let _ = simplifile.delete(file_to_clean)
+    io.println("Cleaned: " <> file_to_clean)
+  })
+
+  // Clean executable file (no extension)
+  let _ = simplifile.delete(base_name)
+  io.println("Cleaned: " <> base_name)
 }
